@@ -8,9 +8,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2004/08/16 23:45:24 $ 
+    $Revision: 1.1.1.2 $ 
 
 */
 
@@ -210,8 +210,7 @@ AttVal* AttrGetById( Node* node, TidyAttrId id );
 #define AttrIsId(av, atid) ((av) && (av)->dict && ((av)->dict->id == atid))
 
 #define AttrHasValue(attr)      ((attr) && (attr)->value)
-#define AttrValueIs(attr, val)  (tmbstrcasecmp(attr->value, val) == 0)
-#define AttrMatches(attr, val)  (AttrHasValue(attr) && \
+#define AttrValueIs(attr, val)  (AttrHasValue(attr) && \
                                  tmbstrcasecmp((attr)->value, val) == 0)
 #define AttrContains(attr, val) (AttrHasValue(attr) && \
                                  tmbsubstr((attr)->value, val) != NULL)
@@ -219,8 +218,6 @@ AttVal* AttrGetById( Node* node, TidyAttrId id );
 
 #define AttrsHaveSameId(a, b) (a && b && a->dict && b->dict && a->dict->id && \
                                b->dict->id && a->dict->id == b->dict->id)
-
-
 
 #define attrIsABBR(av)              AttrIsId( av, TidyAttr_ABBR  )
 #define attrIsACCEPT(av)            AttrIsId( av, TidyAttr_ACCEPT  )

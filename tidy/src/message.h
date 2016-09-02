@@ -8,9 +8,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2004/08/16 23:45:24 $ 
+    $Revision: 1.1.1.2 $ 
 
 */
 
@@ -33,18 +33,34 @@
 ctmbstr ReleaseDate(void);
 
 /* Reports error at current Lexer line/column. */ 
-void message( TidyDocImpl* doc, TidyReportLevel level, ctmbstr msg, ... );
+void message( TidyDocImpl* doc, TidyReportLevel level, ctmbstr msg, ... )
+#ifdef __GNUC__
+__attribute__((format(printf, 3, 4)))
+#endif
+;
 
 /* Reports error at node line/column. */ 
 void messageNode( TidyDocImpl* doc, TidyReportLevel level,
-                  Node* node, ctmbstr msg, ... );
+                  Node* node, ctmbstr msg, ... )
+#ifdef __GNUC__
+__attribute__((format(printf, 4, 5)))
+#endif
+;
 
 /* Reports error at given line/column. */ 
 void messageLexer( TidyDocImpl* doc, TidyReportLevel level, 
-                   ctmbstr msg, ... );
+                   ctmbstr msg, ... )
+#ifdef __GNUC__
+__attribute__((format(printf, 3, 4)))
+#endif
+;
 
 /* For general reporting.  Emits nothing if --quiet yes */
-void tidy_out( TidyDocImpl* doc, ctmbstr msg, ... );
+void tidy_out( TidyDocImpl* doc, ctmbstr msg, ... )
+#ifdef __GNUC__
+__attribute__((format(printf, 2, 3)))
+#endif
+;
 
 
 void ShowVersion( TidyDocImpl* doc );

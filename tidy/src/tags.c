@@ -5,9 +5,9 @@
 
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:54 $ 
+    $Revision: 1.1.1.3 $ 
 
   The HTML tags are stored as 8 bit ASCII strings.
 
@@ -610,58 +610,28 @@ void CheckIMG( TidyDocImpl* doc, Node *node )
     }
 }
 
-void CheckCaption( TidyDocImpl* doc, Node *node )
+void CheckCaption(TidyDocImpl* doc, Node *node)
 {
     AttVal *attval;
-    char *value = NULL;
 
-    CheckAttributes( doc, node );
+    CheckAttributes(doc, node);
 
-    for (attval = node->attributes; attval != NULL; attval = attval->next)
-    {
-        if (attrIsALIGN(attval))
-        {
-            value = attval->value;
-            break;
-        }
-    }
+    attval = AttrGetById(node, TidyAttr_ALIGN);
 
-    if (value != NULL)
-    {
-        if ( tmbstrcasecmp(value, "left") == 0 ||
-             tmbstrcasecmp(value, "right") == 0 )
-            ConstrainVersion( doc, VERS_HTML40_LOOSE );
-        else if ( tmbstrcasecmp(value, "top") == 0 ||
-                  tmbstrcasecmp(value, "bottom") == 0 )
-            ConstrainVersion( doc, ~(VERS_HTML20|VERS_HTML32) );
-        else
-            ReportAttrError( doc, node, attval, BAD_ATTRIBUTE_VALUE );
-    }
+    if (!AttrHasValue(attval))
+        return;
+
+    if (AttrValueIs(attval, "left") || AttrValueIs(attval, "right"))
+        ConstrainVersion(doc, VERS_HTML40_LOOSE);
+    else if (AttrValueIs(attval, "top") || AttrValueIs(attval, "bottom"))
+        ConstrainVersion(doc, ~(VERS_HTML20|VERS_HTML32));
+    else
+        ReportAttrError(doc, node, attval, BAD_ATTRIBUTE_VALUE);
 }
 
 void CheckHTML( TidyDocImpl* doc, Node *node )
 {
-    AttVal *xmlns;
-
-    xmlns = AttrGetById(node, TidyAttr_XMLNS);
-
-    if ( xmlns != NULL && tmbstrcmp(xmlns->value, XHTML_NAMESPACE) == 0 )
-    {
-        Bool htmlOut = cfgBool( doc, TidyHtmlOut );
-        doc->lexer->isvoyager = yes;                  /* Unless plain HTML */
-        SetOptionBool( doc, TidyXhtmlOut, !htmlOut ); /* is specified, output*/
-        SetOptionBool( doc, TidyXmlOut, !htmlOut );   /* will be XHTML. */
-
-        /* adjust other config options, just as in config.c */
-        if ( !htmlOut )
-        {
-            SetOptionBool( doc, TidyUpperCaseTags, no );
-            SetOptionBool( doc, TidyUpperCaseAttrs, no );
-        }
-    }
-
     CheckAttributes(doc, node);
-
 }
 
 void CheckAREA( TidyDocImpl* doc, Node *node )
@@ -716,36 +686,47 @@ void CheckSCRIPT( TidyDocImpl* doc, Node *node )
     AttVal *lang, *type;
     char buf[16];
 
-    CheckAttributes( doc, node );
+    CheckAttributes(doc, node);
 
     lang = AttrGetById(node, TidyAttr_LANGUAGE);
     type = AttrGetById(node, TidyAttr_TYPE);
 
-    if ( !type )
+    if (!type)
     {
-        /*  ReportMissingAttr( doc, node, "type" );  */
-
         /* check for javascript */
-        if ( lang )
+        if (lang)
         {
-            tmbstrncpy( buf, lang->value, sizeof(buf) );
+            /* Test #696799. lang->value can be NULL. */
+            buf[0] = '\0';
+            tmbstrncpy(buf, lang->value, sizeof(buf));
             buf[10] = '\0';
 
-            if ( tmbstrncasecmp(buf, "javascript", 10) == 0 ||
-                 tmbstrncasecmp(buf,    "jscript", 7) == 0 )
+            if (tmbstrncasecmp(buf, "javascript", 10) == 0 ||
+                 tmbstrncasecmp(buf,   "jscript",  7) == 0)
             {
-                AddAttribute( doc, node, "type", "text/javascript" );
+                AddAttribute(doc, node, "type", "text/javascript");
             }
-            else if ( tmbstrcasecmp(buf, "vbscript") == 0 )
+            else if (tmbstrcasecmp(buf, "vbscript") == 0)
             {
                 /* per Randy Waki 8/6/01 */
-                AddAttribute( doc, node, "type", "text/vbscript" );
+                AddAttribute(doc, node, "type", "text/vbscript");
             }
         }
         else
-            AddAttribute( doc, node, "type", "text/javascript" );
+        {
+            AddAttribute(doc, node, "type", "text/javascript");
+        }
+
         type = AttrGetById(node, TidyAttr_TYPE);
-        ReportAttrError( doc, node, type, INSERTING_ATTRIBUTE );
+
+        if (type != NULL)
+        {
+            ReportAttrError(doc, node, type, INSERTING_ATTRIBUTE);
+        }
+        else
+        {
+            ReportMissingAttr(doc, node, "type");
+        }
     }
 }
 
@@ -771,8 +752,8 @@ void CheckLINK( TidyDocImpl* doc, Node *node )
 
     CheckAttributes( doc, node );
 
-    if ( rel && rel->value &&
-         tmbstrcmp(rel->value, "stylesheet") == 0 )
+    /* todo: <link rel="alternate stylesheet"> */
+    if (AttrValueIs(rel, "stylesheet"))
     {
         AttVal *type = AttrGetById(node, TidyAttr_TYPE);
         if (!type)
@@ -896,7 +877,7 @@ uint nodeHeaderLevel( Node* node )
         return 6;
     default:
     {
-    	/* fall through */
+        /* fall through */
     }
     }
     return 0;

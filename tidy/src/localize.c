@@ -9,9 +9,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:54 $ 
+    $Revision: 1.1.1.3 $ 
 
 */
 
@@ -30,14 +30,14 @@
 */
 #define ATRC_ACCESS_URL  "http://www.aprompt.ca/Tidy/accessibilitychecks.html"
 
-const static char *release_date = "1st March 2004";
+static const char *release_date = "1st December 2004";
 
 ctmbstr ReleaseDate(void)
 {
   return release_date;
 }
 
-struct _msgfmt
+static struct _msgfmt
 {
     uint code;
     ctmbstr fmt;
@@ -118,8 +118,8 @@ struct _msgfmt
   { NON_MATCHING_ENDTAG,          "replacing unexpected %s by </%s>"                                        }, /* Error */
   { TAG_NOT_ALLOWED_IN,           "%s isn't allowed in <%s> elements"                                       }, /* Error */
   { MISSING_STARTTAG,             "missing <%s>"                                                            }, /* Error */
-  { UNEXPECTED_ENDTAG,            "unexpected </%s> in <%s>"                                                }, /* Error */
-  { TOO_MANY_ELEMENTS,            "too many %s elements in <%s>"                                            }, /* Error */
+  { UNEXPECTED_ENDTAG,            "unexpected </%s>"                                                }, /* Error */
+  { TOO_MANY_ELEMENTS,            "too many %s elements"                                            }, /* Error */
   { USING_BR_INPLACE_OF,          "using <br> in place of %s"                                               }, /* Error */
   { INSERTING_TAG,                "inserting implicit <%s>"                                                 }, /* Error */
   { CANT_BE_NESTED,               "%s can't be nested"                                                      }, /* Error */
@@ -152,7 +152,7 @@ struct _msgfmt
   { SUSPECTED_MISSING_QUOTE,      "missing quote mark for attribute value"                                  }, /* Error? (not really sometimes) */
   { DUPLICATE_FRAMESET,           "repeated FRAMESET element"                                               }, /* Error */
   { UNKNOWN_ELEMENT,              "%s is not recognized!"                                                   }, /* Error */
-  { UNEXPECTED_ENDTAG,            "unexpected </%s> in <%s>"                                                }, /* Error */
+  { UNEXPECTED_ENDTAG,            "unexpected </%s>"                                                }, /* Error */
 
 #if SUPPORT_ACCESSIBILITY_CHECKS
 
@@ -310,31 +310,31 @@ static ctmbstr GetFormatFromCode(uint code)
     return NULL;
 }
 
-static char* LevelPrefix( TidyReportLevel level, char* buf )
+static char* LevelPrefix( TidyReportLevel level, char* buf, size_t count )
 {
   *buf = 0;
   switch ( level )
   {
   case TidyInfo:
-    tmbstrcpy( buf, "Info: " );
+    tmbstrncpy( buf, "Info: ", count );
     break;
   case TidyWarning:
-    tmbstrcpy( buf, "Warning: " );
+    tmbstrncpy( buf, "Warning: ", count );
     break;
   case TidyConfig:
-    tmbstrcpy( buf, "Config: " );
+    tmbstrncpy( buf, "Config: ", count );
     break;
   case TidyAccess:
-    tmbstrcpy( buf, "Access: " );
+    tmbstrncpy( buf, "Access: ", count );
     break;
   case TidyError:
-    tmbstrcpy( buf, "Error: " );
+    tmbstrncpy( buf, "Error: ", count );
     break;
   case TidyBadDocument:
-    tmbstrcpy( buf, "Document: " );
+    tmbstrncpy( buf, "Document: ", count );
     break;
   case TidyFatal:
-    tmbstrcpy( buf, "panic: " );
+    tmbstrncpy( buf, "panic: ", count );
     break;
   }
   return buf + tmbstrlen( buf );
@@ -404,6 +404,12 @@ static char* ReportPosition(TidyDocImpl* doc, int line, int col, char* buf, size
 
 static void messagePos( TidyDocImpl* doc, TidyReportLevel level,
                         int line, int col, ctmbstr msg, va_list args )
+#ifdef __GNUC__
+__attribute__((format(printf, 5, 0)))
+#endif
+;
+static void messagePos( TidyDocImpl* doc, TidyReportLevel level,
+                        int line, int col, ctmbstr msg, va_list args )
 {
     char messageBuf[ 2048 ];
     Bool go = UpdateCount( doc, level );
@@ -428,7 +434,7 @@ static void messagePos( TidyDocImpl* doc, TidyReportLevel level,
                 WriteChar( *cp, doc->errout );
         }
 
-        LevelPrefix( level, buf );
+        LevelPrefix( level, buf, sizeof(buf) );
         for ( cp = buf; *cp; ++cp )
             WriteChar( *cp, doc->errout );
 
@@ -638,7 +644,8 @@ void ReportEntityError( TidyDocImpl* doc, uint code, ctmbstr entity, int c )
 
 void ReportAttrError(TidyDocImpl* doc, Node *node, AttVal *av, uint code)
 {
-    char *name = "NULL", *value = "NULL", tagdesc[64];
+    char const *name = "NULL", *value = "NULL";
+    char tagdesc[64];
     ctmbstr fmt = GetFormatFromCode(code);
 
     assert( fmt != NULL );
@@ -979,7 +986,7 @@ void ErrorSummary( TidyDocImpl* doc )
 
             tidy_out(doc, "It is unlikely that vendor-specific, system-dependent encodings\n");
             tidy_out(doc, "work widely enough on the World Wide Web; you should avoid using the \n");
-            tidy_out(doc, encnam );
+            tidy_out(doc, "%s", encnam );
             tidy_out(doc, " character encoding, instead you are recommended to\n" );
             tidy_out(doc, "use named entities, e.g. &trade;.\n\n");
         }
@@ -988,7 +995,7 @@ void ErrorSummary( TidyDocImpl* doc )
             tidy_out(doc, "Character codes 128 to 159 (U+0080 to U+009F) are not allowed in HTML;\n");
             tidy_out(doc, "even if they were, they would likely be unprintable control characters.\n");
             tidy_out(doc, "Tidy assumed you wanted to refer to a character with the same byte value in the \n");
-            tidy_out(doc, encnam );
+            tidy_out(doc, "%s", encnam );
             tidy_out(doc, " encoding and replaced that reference with the Unicode equivalent.\n\n" );
         }
         if (doc->badChars & BC_INVALID_UTF8)
@@ -1044,9 +1051,9 @@ void ErrorSummary( TidyDocImpl* doc )
       if ( cfg(doc, TidyAccessibilityCheckLevel) > 0 )
       {
         tidy_out(doc, "For further advice on how to make your pages accessible, see\n");
-        tidy_out(doc, ACCESS_URL );
+        tidy_out(doc, "%s", ACCESS_URL );
         tidy_out(doc, "and\n" );
-        tidy_out(doc, ATRC_ACCESS_URL );
+        tidy_out(doc, "%s", ATRC_ACCESS_URL );
         tidy_out(doc, ".\n" );
         tidy_out(doc, "You may also want to try \"http://www.cast.org/bobby/\" which is a free Web-based\n");
         tidy_out(doc, "service for checking URLs for accessibility.\n\n");
@@ -1224,6 +1231,10 @@ void ReportMarkupVersion( TidyDocImpl* doc )
             apparentVers = HTMLVersion(doc);
 
         vers = HTMLVersionNameFromCode( apparentVers, isXhtml );
+
+        if (!vers)
+            vers = "HTML Proprietary";
+
         message( doc, TidyInfo, "Document content looks like %s", vers );
     }
 }

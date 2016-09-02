@@ -6,9 +6,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:53 $ 
+    $Revision: 1.1.1.3 $ 
 
 */
 
@@ -139,11 +139,11 @@ static const ctmbstr colorNames[] =
 
 
 /* function prototypes */
-void InitAccessibilityChecks( TidyDocImpl* doc, int level123 );
-void FreeAccessibilityChecks( TidyDocImpl* doc );
+static void InitAccessibilityChecks( TidyDocImpl* doc, int level123 );
+static void FreeAccessibilityChecks( TidyDocImpl* doc );
 
 static Bool GetRgb( ctmbstr color, int rgb[3] );
-static Bool CompareColors( int rgbBG[3], int rgbFG[3] );
+static Bool CompareColors( const int rgbBG[3], const int rgbFG[3] );
 static int  ctox( tmbchar ch );
 
 /*
@@ -188,7 +188,7 @@ static void GetFileExtension( ctmbstr path, tmbchar *ext, uint maxExt )
 
 static Bool IsImage( ctmbstr iType )
 {
-    int i;
+    uint i;
 
     /* Get the file extension */
     tmbchar ext[20];
@@ -214,7 +214,7 @@ static Bool IsImage( ctmbstr iType )
 
 static int IsSoundFile( ctmbstr sType )
 {
-    int i;
+    uint i;
     tmbchar ext[ 20 ];
     GetFileExtension( sType, ext, sizeof(ext) );
 
@@ -239,7 +239,7 @@ static int IsSoundFile( ctmbstr sType )
 
 static Bool IsValidSrcExtension( ctmbstr sType )
 {
-    int i;
+    uint i;
     tmbchar ext[20];
     GetFileExtension( sType, ext, sizeof(ext) );
 
@@ -261,7 +261,7 @@ static Bool IsValidSrcExtension( ctmbstr sType )
 
 static Bool IsValidMediaExtension( ctmbstr sType )
 {
-    int i;
+    uint i;
     tmbchar ext[20];
     GetFileExtension( sType, ext, sizeof(ext) );
 
@@ -368,7 +368,7 @@ static Bool EndsWithBytes( ctmbstr txt )
 static tmbstr textFromOneNode( TidyDocImpl* doc, Node* node )
 {
     uint i;
-    int x = 0;
+    uint x = 0;
     tmbstr txt = doc->access.text;
     
     if ( node )
@@ -551,12 +551,12 @@ static int minmax( int i1, int i2 )
 {
    return MAX(i1, i2) - MIN(i1,i2);
 }
-static int brightness( int rgb[3] )
+static int brightness( const int rgb[3] )
 {
    return ((rgb[0]*299) + (rgb[1]*587) + (rgb[2]*114)) / 1000;
 }
 
-static Bool CompareColors( int rgbBG[3], int rgbFG[3] )
+static Bool CompareColors( const int rgbBG[3], const int rgbFG[3] )
 {
     int brightBG = brightness( rgbBG );
     int brightFG = brightness( rgbFG );
@@ -584,7 +584,7 @@ static Bool CompareColors( int rgbBG[3], int rgbFG[3] )
 
 static Bool GetRgb( ctmbstr color, int rgb[] )
 {
-    int x;
+    uint x;
 
     /* Check if we have a color name */
     for (x = 0; x < N_COLORS; x++)
@@ -1067,8 +1067,7 @@ static Bool CheckMissingStyleSheets( TidyDocImpl* doc, Node* node )
 
             if ( !sspresent && attrIsREL(av) )
             {
-                sspresent = ( av->value != NULL &&
-                              strcmp(av->value, "stylesheet") == 0 );
+                sspresent = AttrValueIs(av, "stylesheet");
             }
         }
 
@@ -1196,7 +1195,6 @@ static void CheckAnchorAccess( TidyDocImpl* doc, Node* node )
 {
     AttVal* av;
     tmbstr word = NULL;
-    int checked = 0;
     Bool HasDescription = no;
     Bool HasTriggeredLink = no;
 
@@ -1262,19 +1260,13 @@ static void CheckAnchorAccess( TidyDocImpl* doc, Node* node )
             /* Checks 'TARGET' attribute for validity if it exists */
             if ( attrIsTARGET(av) )
             {
-                checked = 1;
-
-                if ( hasValue(av) )
+                if (AttrValueIs(av, "_new"))
                 {
-                    if (strcmp (av->value, "_new") == 0)
-                    {
-                        ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_NEW);
-                    }
-                    
-                    if (strcmp (av->value, "_blank") == 0)
-                    {
-                        ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_BLANK);
-                    }
+                    ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_NEW);
+                }
+                else if (AttrValueIs(av, "_blank"))
+                {
+                    ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_BLANK);
                 }
             }
         }
@@ -1374,18 +1366,13 @@ static void CheckArea( TidyDocImpl* doc, Node* node )
         {
             if ( attrIsTARGET(av) )
             {
-                if ((av->value != NULL)&&
-                    (IsWhitespace (av->value) == no))
+                if (AttrValueIs(av, "_new"))
                 {
-                    if (strcmp (av->value, "_new") == 0)
-                    {
-                        ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_NEW);
-                    }
-                        
-                    if (strcmp (av->value, "_blank") == 0)
-                    {
-                        ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_BLANK);
-                    }
+                    ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_NEW);
+                }
+                else if (AttrValueIs(av, "_blank"))
+                {
+                    ReportAccessWarning( doc, node, NEW_WINDOWS_REQUIRE_WARNING_BLANK);
                 }
             }
         }
@@ -1727,16 +1714,11 @@ static void CheckTable( TidyDocImpl* doc, Node* node )
             {
                 if ( hasValue(av) )
                 {
-                    if ( strstr(av->value, "summary") == NULL &&
-                         strstr(av->value, "table") == NULL )
-                    {
-                        HasSummary = yes;
-                    }
+                    HasSummary = yes;
 
-                    if ( strstr(av->value, "summary") != NULL ||
-                         strstr(av->value, "table") != NULL )
+                    if (AttrContains(av, "summary") && 
+                        AttrContains(av, "table"))
                     {
-                        HasSummary = yes;
                         ReportAccessError( doc, node, TABLE_SUMMARY_INVALID_PLACEHOLDER );
                     }
                 }
@@ -2127,11 +2109,11 @@ static void CheckInputLabel( TidyDocImpl* doc, Node* node )
             */
             else if ( attrIsTYPE(av) && hasValue(av) )
             {
-                if ( strstr(av->value, "checkbox") != NULL ||
-                     strstr(av->value, "radio") != NULL    ||
-                     strstr(av->value, "text") != NULL     ||
-                     strstr(av->value, "password") != NULL ||
-                     strstr(av->value, "file") != NULL )
+                if (AttrValueIs(av, "checkbox") ||
+                    AttrValueIs(av, "radio")    ||
+                    AttrValueIs(av, "text")     ||
+                    AttrValueIs(av, "password") ||
+                    AttrValueIs(av, "file"))
                 {
                     if ( node->prev != NULL &&
                          node->prev->prev != NULL )
@@ -2181,11 +2163,10 @@ static void CheckInputLabel( TidyDocImpl* doc, Node* node )
                 }
 
                 /* The following 'TYPES' do not require a LABEL */
-                if ( strcmp(av->value, "image") == 0  ||
-                     strcmp(av->value, "hidden") == 0 ||
-                     strcmp(av->value, "submit") == 0 ||
-                     strcmp(av->value, "reset") == 0  ||
-                     strcmp(av->value, "button") == 0 )
+                if (AttrValueIs(av, "image")  ||
+                    AttrValueIs(av, "submit") ||
+                    AttrValueIs(av, "reset")  ||
+                    AttrValueIs(av, "button"))
                 {
                     HasValidLabel = yes;
                 }
@@ -2235,7 +2216,7 @@ static void CheckInputAttributes( TidyDocImpl* doc, Node* node )
                  doc->access.PRIORITYCHK == 2 ||
                  doc->access.PRIORITYCHK == 3 )
             {
-                if ( strcmp(av->value, "image") == 0 )
+                if (AttrValueIs(av, "image"))
                 {
                     MustHaveAlt = yes;
                 }
@@ -2243,8 +2224,8 @@ static void CheckInputAttributes( TidyDocImpl* doc, Node* node )
 
             if ( doc->access.PRIORITYCHK == 3 )
             {
-                if ( strcmp(av->value, "text") == 0 ||
-                     strcmp(av->value, "checkbox") == 0 )
+                if (AttrValueIs(av, "text") ||
+                    AttrValueIs(av, "checkbox"))
                 {    
                     MustHaveValue = yes;
                 }
@@ -2381,7 +2362,7 @@ static void CheckHeaderNesting( TidyDocImpl* doc, Node* node )
            Text within header element cannot contain more than 20 words without
            a separate description
         */
-        if (node->content->tag == NULL)
+        if (node->content != NULL && node->content->tag == NULL)
         {
             word = textFromOneNode( doc, node->content);
 
@@ -2590,7 +2571,7 @@ static void CheckTextArea( TidyDocImpl* doc, Node* node )
 
             if (flag == 0)
             {
-                if ( nodeIsLABEL(node->next->next) )
+                if ( node->next != NULL && nodeIsLABEL(node->next->next) )
                 {
                     temp = node->next->next;
                     
@@ -2739,7 +2720,7 @@ static void CheckLink( TidyDocImpl* doc, Node* node )
         {
             if ( attrIsREL(av) && hasValue(av) )
             {
-                if ( strstr(av->value, "stylesheet") != NULL )
+                if (AttrContains(av, "stylesheet"))
                     HasRel = yes;
             }
 
@@ -3108,7 +3089,7 @@ static Bool CheckMetaData( TidyDocImpl* doc, Node* node )
                     ContainsAttr = yes;
 
                     /* Must not have an auto-refresh */
-                    if ( strcmp(av->value, "refresh") == 0 )
+                    if (AttrValueIs(av, "refresh"))
                     {
                         HasHttpEquiv = yes;
                         ReportAccessError( doc, node, REMOVE_AUTO_REFRESH );
@@ -3162,8 +3143,7 @@ static Bool CheckMetaData( TidyDocImpl* doc, Node* node )
             AttVal* av = attrGetREL(node);
             HasMetaData = yes;
 
-            if ( hasValue(av) &&
-                 strstr(av->value, "stylesheet") != NULL )
+            if (AttrContains(av, "stylesheet"))
             {
                 HasRel = yes;
                 ReportAccessError( doc, node, METADATA_MISSING_LINK );
@@ -3366,7 +3346,7 @@ static void CheckListUsage( TidyDocImpl* doc, Node* node )
 * Initializes the AccessibilityChecks variables as necessary
 ************************************************************/
 
-void InitAccessibilityChecks( TidyDocImpl* doc, int level123 )
+static void InitAccessibilityChecks( TidyDocImpl* doc, int level123 )
 {
     ClearMemory( &doc->access, sizeof(doc->access) );
     doc->access.PRIORITYCHK = level123;
@@ -3379,7 +3359,7 @@ void InitAccessibilityChecks( TidyDocImpl* doc, int level123 )
 ************************************************************/
 
 
-void FreeAccessibilityChecks( TidyDocImpl* doc )
+static void FreeAccessibilityChecks( TidyDocImpl* doc )
 {
 #pragma unused(doc)
 

@@ -5,9 +5,9 @@
 
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:54 $ 
+    $Revision: 1.1.1.3 $ 
 
   Defines HTML Tidy API implemented by tidy library.
   
@@ -214,7 +214,7 @@ int         tidySetCharEncoding( TidyDoc tdoc, ctmbstr encnam )
     return -EINVAL;
 }
 
-int		tidySetInCharEncoding( TidyDoc tdoc, ctmbstr encnam )
+int           tidySetInCharEncoding( TidyDoc tdoc, ctmbstr encnam )
 {
     TidyDocImpl* impl = tidyDocToImpl( tdoc );
     if ( impl )
@@ -228,7 +228,7 @@ int		tidySetInCharEncoding( TidyDoc tdoc, ctmbstr encnam )
     return -EINVAL;
 }
 
-int		tidySetOutCharEncoding( TidyDoc tdoc, ctmbstr encnam )
+int           tidySetOutCharEncoding( TidyDoc tdoc, ctmbstr encnam )
 {
     TidyDocImpl* impl = tidyDocToImpl( tdoc );
     if ( impl )
@@ -952,7 +952,14 @@ int         tidyDocSaveFile( TidyDocImpl* doc, ctmbstr filnam )
 
 int         tidyDocSaveStdout( TidyDocImpl* doc )
 {
-    int oldstdoutmode = -1, oldstderrmode = -1, status = 0;
+#if !defined(NO_SETMODE_SUPPORT)
+
+#if defined(_WIN32) || defined(OS2_OS)
+    int oldstdoutmode = -1, oldstderrmode = -1;
+#endif
+
+#endif
+    int status = 0;
     uint outenc = cfg( doc, TidyOutCharEncoding );
     uint nl = cfg( doc, TidyNewline );
     StreamOut* out = FileOutput( stdout, outenc, nl );
@@ -962,16 +969,6 @@ int         tidyDocSaveStdout( TidyDocImpl* doc )
 #if defined(_WIN32) || defined(OS2_OS)
     oldstdoutmode = setmode( fileno(stdout), _O_BINARY );
     oldstderrmode = setmode( fileno(stderr), _O_BINARY );
-
-#if SUPPORT_UTF16_ENCODINGS && 0 /* fix for bug 723948 */
-    if ( out->encoding == UTF16   ||
-         out->encoding == UTF16LE ||
-         out->encoding == UTF16BE )
-    {
-      ReportError(doc, NULL, doc->root, ENCODING_IO_CONFLICT );
-    }
-#endif
-
 #endif
 
 #endif
@@ -1262,7 +1259,7 @@ int         tidyDocCleanAndRepair( TidyDocImpl* doc )
             AddGenerator(doc);
     }
 
-    /* ensure presence of initial <?XML version="1.0"?> */
+    /* ensure presence of initial <?xml version="1.0"?> */
     if ( xmlOut && xmlDecl )
         FixXmlDecl( doc );
 

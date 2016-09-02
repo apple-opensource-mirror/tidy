@@ -6,11 +6,15 @@
   (c) 1998-2004 (W3C) MIT, ERCIM, Keio University
   See tidy.h for the copyright notice.
 
+  Changelog: The following changes were made by Apple to the original source.
+  12/21/04 sw Added "#define HAS_VSNPRINTF 1" for Mac OS X
+  05/10/04 sw Added "#define DFLT_REPL_CHARENC WIN1252" for Mac OS X
+
   CVS Info :
 
     $Author: swilkin $ 
-    $Date: 2004/05/10 17:04:28 $ 
-    $Revision: 1.2 $ 
+    $Date: 2005/01/13 17:30:51 $ 
+    $Revision: 1.4 $ 
 
 */
 
@@ -107,6 +111,7 @@ extern "C" {
 #endif
 
 #if defined(MAC_OS_X)
+#define HAS_VSNPRINTF 1
 #ifndef DFLT_REPL_CHARENC
 #define DFLT_REPL_CHARENC WIN1252
 #endif

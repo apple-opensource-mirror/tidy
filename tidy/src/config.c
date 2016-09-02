@@ -6,9 +6,9 @@
 
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:53 $ 
+    $Revision: 1.1.1.3 $ 
 
 */
 
@@ -36,14 +36,21 @@
 #ifdef WINDOWS_OS
 #include <io.h>
 #else
+#ifdef DMALLOC
+/*
+   macro for valloc() in dmalloc.h may conflict with declaration for valloc() in unistd.h -
+   we don't need (debugging for) valloc() here. dmalloc.h should come last but it doesn't.
+*/
+#ifdef valloc
+#undef valloc
+#endif
+#endif
 #include <unistd.h>
 #endif
 
 #ifdef TIDY_WIN32_MLANG_SUPPORT
 #include "win32tc.h"
 #endif
-
-int CharEncodingId( ctmbstr charenc ); /* returns -1 if not recognized */
 
 void InitConfig( TidyDocImpl* doc )
 {
@@ -64,13 +71,6 @@ static const ctmbstr boolPicks[] =
 {
   "no",
   "yes",
-  NULL
-};
-
-static const ctmbstr invBoolPicks[] = 
-{
-  "yes",
-  "no",
   NULL
 };
 
@@ -190,7 +190,7 @@ static const TidyOptionImpl option_defs[] =
   { TidyShowMarkup,              PP, "markup",                      BL, yes,             ParseBool,         boolPicks       },
   { TidyShowWarnings,            DG, "show-warnings",               BL, yes,             ParseBool,         boolPicks       },
   { TidyQuiet,                   MS, "quiet",                       BL, no,              ParseBool,         boolPicks       },
-  { TidyIndentContent,           PP, "indent",                      IN, TidyNoState,     ParseIndent,       autoBoolPicks   },
+  { TidyIndentContent,           PP, "indent",                      IN, TidyNoState,     ParseAutoBool,     autoBoolPicks   },
   { TidyHideEndTags,             MU, "hide-endtags",                BL, no,              ParseBool,         boolPicks       },
   { TidyXmlTags,                 MU, "input-xml",                   BL, no,              ParseBool,         boolPicks       },
   { TidyXmlOut,                  MU, "output-xml",                  BL, no,              ParseBool,         boolPicks       },
@@ -249,7 +249,7 @@ static const TidyOptionImpl option_defs[] =
   { TidyNCR,                     MU, "ncr",                         BL, yes,             ParseBool,         boolPicks       },
 #endif
 #if SUPPORT_UTF16_ENCODINGS
-  { TidyOutputBOM,               CE, "output-bom",                  IN, TidyAutoState,   ParseBOM,          autoBoolPicks   },
+  { TidyOutputBOM,               CE, "output-bom",                  IN, TidyAutoState,   ParseAutoBool,     autoBoolPicks   },
 #endif
   { TidyReplaceColor,            MU, "replace-color",               BL, no,              ParseBool,         boolPicks       },
   { TidyCSSPrefix,               MU, "css-prefix",                  ST, 0,               ParseCSS1Selector, NULL            },
@@ -263,7 +263,7 @@ static const TidyOptionImpl option_defs[] =
   { TidyPunctWrap,               PP, "punctuation-wrap",            BL, no,              ParseBool,         boolPicks       },
 #endif
   { TidyMergeDivs,               MU, "merge-divs",                  BL, yes,             ParseBool,         boolPicks       },
-  { N_TIDY_OPTIONS,  			 XX, "unknown!",                    XY,	0,               NULL,              NULL            }
+  { N_TIDY_OPTIONS,              XX, NULL,                          XY, 0,               NULL,              NULL            }
 };
 
 /* Should only be called by options set by name
@@ -645,7 +645,10 @@ int ParseConfigFileEnc( TidyDocImpl* doc, ctmbstr file, ctmbstr charenc )
     int enc = CharEncodingId( charenc );
 
     if ( fin == NULL || enc < 0 )
+    {
         FileError( doc, fname, TidyConfig );
+        return -1;
+    }
     else
     {
         tchar c;
@@ -679,7 +682,7 @@ int ParseConfigFileEnc( TidyDocImpl* doc, ctmbstr file, ctmbstr charenc )
                     {
                         TidyConfigImpl* cfg = &doc->config;
                         tmbchar buf[8192];
-                        int i = 0;
+                        uint i = 0;
                         tchar delim = 0;
                         Bool waswhite = yes;
 
@@ -723,7 +726,7 @@ int ParseConfigFileEnc( TidyDocImpl* doc, ctmbstr file, ctmbstr charenc )
 
         fclose( fin );
         MemFree( (void *)cfg->cfgIn->source.sourceData ); /* fix for bug #810259 */
-        MemFree( cfg->cfgIn );
+        freeStreamIn( cfg->cfgIn );
         cfg->cfgIn = NULL;
     }
 
@@ -776,7 +779,7 @@ Bool ParseConfigValue( TidyDocImpl* doc, TidyOptionId optId, ctmbstr optval )
 
         status = option->parser( doc, option );
 
-        MemFree( doc->config.cfgIn );       /* Release input source */
+        freeStreamIn(doc->config.cfgIn);  /* Release input source */
         doc->config.cfgIn  = NULL;
         tidyBufDetach( &inbuf );
     }
@@ -1000,11 +1003,20 @@ Bool ParseBool( TidyDocImpl* doc, const TidyOptionImpl* entry )
     return status;
 }
 
+Bool ParseAutoBool( TidyDocImpl* doc, const TidyOptionImpl* entry )
+{
+    ulong flag = 0;
+    Bool status = ParseTriState( TidyAutoState, doc, entry, &flag );
+    if ( status )
+        SetOptionInt( doc, entry->id, flag );
+    return status;
+}
+
 /* a string excluding whitespace */
 Bool ParseName( TidyDocImpl* doc, const TidyOptionImpl* option )
 {
     tmbchar buf[ 1024 ] = {0};
-    int i = 0;
+    uint i = 0;
     uint c = SkipWhite( &doc->config );
 
     while ( i < sizeof(buf)-2 && c != EndOfStream && !IsWhite(c) )
@@ -1025,7 +1037,7 @@ Bool ParseName( TidyDocImpl* doc, const TidyOptionImpl* option )
 Bool ParseCSS1Selector( TidyDocImpl* doc, const TidyOptionImpl* option )
 {
     char buf[256] = {0};
-    int i = 0;
+    uint i = 0;
     uint c = SkipWhite( &doc->config );
 
     while ( i < sizeof(buf)-2 && c != EndOfStream && !IsWhite(c) )
@@ -1071,7 +1083,7 @@ Bool ParseTagNames( TidyDocImpl* doc, const TidyOptionImpl* option )
 {
     TidyConfigImpl* cfg = &doc->config;
     tmbchar buf[1024];
-    int i = 0, nTags = 0;
+    uint i = 0, nTags = 0;
     uint c = SkipWhite( cfg );
     uint ttyp = 0;
 
@@ -1158,7 +1170,7 @@ Bool ParseString( TidyDocImpl* doc, const TidyOptionImpl* option )
 {
     TidyConfigImpl* cfg = &doc->config;
     tmbchar buf[8192];
-    int i = 0;
+    uint i = 0;
     tchar delim = 0;
     Bool waswhite = yes;
 
@@ -1199,7 +1211,8 @@ Bool ParseString( TidyDocImpl* doc, const TidyOptionImpl* option )
 Bool ParseCharEnc( TidyDocImpl* doc, const TidyOptionImpl* option )
 {
     tmbchar buf[64] = {0};
-    int i = 0, enc = ASCII;
+    uint i = 0;
+    int enc = ASCII;
     Bool validEncoding = yes;
     tchar c = SkipWhite( &doc->config );
 
@@ -1294,18 +1307,6 @@ ctmbstr CharEncodingName( int encoding )
     return encodingName;
 }
 
-Bool ParseIndent( TidyDocImpl* doc, const TidyOptionImpl* option )
-{
-    ulong flag = 0;
-    Bool status = ParseTriState( TidyAutoState, doc, option, &flag );
-
-    if ( status )
-    {
-        SetOptionInt( doc, TidyIndentContent, flag );
-    }
-    return status;
-}
-
 /*
    doctype: omit | auto | strict | loose | <fpi>
 
@@ -1316,7 +1317,7 @@ Bool ParseIndent( TidyDocImpl* doc, const TidyOptionImpl* option )
 Bool ParseDocType( TidyDocImpl* doc, const TidyOptionImpl* option )
 {
     tmbchar buf[ 32 ] = {0};
-    int i = 0;
+    uint i = 0;
     Bool status = yes;
     TidyDoctypeModes dtmode = TidyDoctypeAuto;
 
@@ -1366,7 +1367,7 @@ Bool ParseRepeatAttr( TidyDocImpl* doc, const TidyOptionImpl* option )
 {
     Bool status = yes;
     tmbchar buf[64] = {0};
-    int i = 0;
+    uint i = 0;
 
     TidyConfigImpl* cfg = &doc->config;
     tchar c = SkipWhite( cfg );
@@ -1389,19 +1390,6 @@ Bool ParseRepeatAttr( TidyDocImpl* doc, const TidyOptionImpl* option )
     }
     return status;
 }
-
-#if SUPPORT_UTF16_ENCODINGS
-Bool ParseBOM( TidyDocImpl* doc, const TidyOptionImpl* option )
-{
-    ulong flag = 0;
-    Bool status = ParseTriState( TidyAutoState, doc, option, &flag );
-    if ( status )
-    {
-        SetOptionInt( doc, TidyOutputBOM, flag );
-    }
-    return status;
-}
-#endif
 
 /* Use TidyOptionId as iterator.
 ** Send index of 1st option after TidyOptionUnknown as start of list.
@@ -1475,7 +1463,7 @@ static int  WriteOptionString( const TidyOptionImpl* option,
 static int  WriteOptionInt( const TidyOptionImpl* option, uint ival, StreamOut* out )
 {
   tmbchar sval[ 32 ] = {0};
-  tmbsnprintf(sval, sizeof(sval), "%d", ival );
+  tmbsnprintf(sval, sizeof(sval), "%u", ival );
   return WriteOptionString( option, sval, out );
 }
 

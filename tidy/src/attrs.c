@@ -5,9 +5,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:53 $ 
+    $Revision: 1.1.1.3 $ 
 
 */
 
@@ -162,7 +162,7 @@ static const Attribute attribute_defs [] =
   { TidyAttr_TITLE,             "title",             VERS_HTML40,       PCDATA    }, /* text tool tip */
   { TidyAttr_TOPMARGIN,         "topmargin",         VERS_MICROSOFT,    NUMBER    }, /* used on BODY */
   { TidyAttr_TYPE,              "type",              VERS_FROM32,       TYPE      }, /* also used by SPACER */
-  { TidyAttr_USEMAP,            "usemap",            VERS_ALL,          BOOL      }, /* things with images */
+  { TidyAttr_USEMAP,            "usemap",            VERS_ALL,          URL       }, /* things with images */
   { TidyAttr_VALIGN,            "valign",            VERS_FROM32,       VALIGN    }, 
   { TidyAttr_VALUE,             "value",             VERS_ALL,          PCDATA    }, 
   { TidyAttr_VALUETYPE,         "valuetype",         VERS_HTML40,       VTYPE     }, /* PARAM: data, ref, object */
@@ -172,7 +172,7 @@ static const Attribute attribute_defs [] =
   { TidyAttr_WIDTH,             "width",             VERS_ALL,          LENGTH    }, /* pixels only for TD/TH */
   { TidyAttr_WRAP,              "wrap",              VERS_NETSCAPE,     PCDATA    }, /* textarea */
   { TidyAttr_XML_LANG,          "xml:lang",          VERS_XML,          LANG      }, /* XML language */
-  { TidyAttr_XML_SPACE,         "xml:space",         VERS_XML,          PCDATA    }, /* XML language */
+  { TidyAttr_XML_SPACE,         "xml:space",         VERS_XML,          PCDATA    }, /* XML white space */
 
   /* todo: VERS_ALL is wrong! */
   { TidyAttr_XMLNS,             "xmlns",             VERS_ALL,          PCDATA    }, /* name space */
@@ -199,7 +199,7 @@ static uint AttributeVersions(Node* node, AttVal* attval)
         return attval->dict->versions;
 
     for (i = 0; node->tag->attrvers[i].attribute; ++i)
-        if (node->tag->attrvers[i].attribute == (uint)attval->dict->id)
+        if (node->tag->attrvers[i].attribute == attval->dict->id)
             return node->tag->attrvers[i].versions;
 
     return attval->dict->versions & VERS_ALL
@@ -640,7 +640,7 @@ Bool IsCSS1Selector( ctmbstr buf )
                 esclen > 0                       /* Escaped? Anything goes. */
                 || ( pos>0 && c == '-' )         /* Dash cannot be 1st char */
                 || isalpha(c)                    /* a-z, A-Z anywhere */
-                || ( c >= 161 )      			 /* Unicode 161-255 anywhere */
+                || ( c >= 161 )                  /* Unicode 161-255 anywhere */
             );
             esclen = 0;
         }
@@ -806,6 +806,7 @@ void RepairDuplicateAttributes( TidyDocImpl* doc, Node *node)
     for (first = node->attributes; first != NULL;)
     {
         AttVal *second;
+        Bool firstRedefined = no;
 
         if (!(first->asp == NULL && first->php == NULL))
         {
@@ -827,7 +828,7 @@ void RepairDuplicateAttributes( TidyDocImpl* doc, Node *node)
             /* first and second attribute have same local name */
             /* now determine what to do with this duplicate... */
 
-            if (attrIsCLASS(first) && cfgBool(doc, TidyJoinClasses) && AttrHasValue(first))
+            if (attrIsCLASS(first) && cfgBool(doc, TidyJoinClasses) && AttrHasValue(first) && AttrHasValue(second))
             {
                 /* concatenate classes */
 
@@ -843,7 +844,7 @@ void RepairDuplicateAttributes( TidyDocImpl* doc, Node *node)
 
                 second = temp;
             }
-            else if (attrIsSTYLE(first) && cfgBool(doc, TidyJoinStyles) && AttrHasValue(first))
+            else if (attrIsSTYLE(first) && cfgBool(doc, TidyJoinStyles) && AttrHasValue(first) && AttrHasValue(second))
             {
                 /* concatenate styles */
 
@@ -899,6 +900,7 @@ void RepairDuplicateAttributes( TidyDocImpl* doc, Node *node)
                 temp = first->next;
                 ReportAttrError( doc, node, first, REPEATED_ATTRIBUTE);
                 RemoveAttribute( doc, node, first );
+                firstRedefined = yes;
                 first = temp;
                 second = second->next;
             }
@@ -912,7 +914,8 @@ void RepairDuplicateAttributes( TidyDocImpl* doc, Node *node)
                 second = temp;
             }
         }
-        first = first->next;
+        if (!firstRedefined)
+            first = first->next;
     }
 }
 
@@ -1243,6 +1246,10 @@ void CheckAlign( TidyDocImpl* doc, Node *node, AttVal *attval)
 
     CheckLowerCaseAttrValue( doc, node, attval);
 
+    /* currently CheckCaption(...) takes care of the remaining cases */
+    if (nodeIsCAPTION(node))
+        return;
+
     if (!(AttrValueIs(attval, "left")   ||
           AttrValueIs(attval, "right")  ||
           AttrValueIs(attval, "center") ||
@@ -1478,7 +1485,7 @@ void CheckColor( TidyDocImpl* doc, Node *node, AttVal *attval)
         cp = s = (tmbstr) MemAlloc(2 + tmbstrlen (given));
         *cp++ = '#';
         while (0 != (*cp++ = *given++))
-        	continue;
+            continue;
 
         ReportAttrError(doc, node, attval, BAD_ATTRIBUTE_VALUE_REPLACED);
 

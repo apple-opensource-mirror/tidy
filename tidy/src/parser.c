@@ -5,9 +5,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:54 $ 
+    $Revision: 1.1.1.3 $ 
 
 */
 
@@ -79,14 +79,14 @@ Bool IsNewNode(Node *node)
     return yes;
 }
 
-void CoerceNode(TidyDocImpl* doc, Node *node, TidyTagId tid, Bool obsolete, Bool expected)
+void CoerceNode(TidyDocImpl* doc, Node *node, TidyTagId tid, Bool obsolete, Bool unexpected)
 {
     const Dict* tag = LookupTagDef(tid);
     Node* tmp = InferredTag(doc, tag->id);
 
     if (obsolete)
         ReportWarning(doc, node, tmp, OBSOLETE_ELEMENT);
-    else if (expected)
+    else if (unexpected)
         ReportError(doc, node, tmp, REPLACING_UNEX_ELEMENT);
     else
         ReportNotice(doc, node, tmp, REPLACING_ELEMENT);
@@ -808,8 +808,11 @@ static void MoveToHead( TidyDocImpl* doc, Node *element, Node *node )
 static void MoveNodeToBody( TidyDocImpl* doc, Node* node )
 {
     Node* body = FindBody( doc );
-    RemoveNode( node );
-    InsertNodeAtEnd( body, node );
+    if ( body )
+    {
+        RemoveNode( node );
+        InsertNodeAtEnd( body, node );
+    }
 }
 
 /*
@@ -820,7 +823,7 @@ static void MoveNodeToBody( TidyDocImpl* doc, Node* node )
 void ParseBlock( TidyDocImpl* doc, Node *element, uint mode)
 {
     Lexer* lexer = doc->lexer;
-    Node *node, *parent;
+    Node *node;
     Bool checkstack = yes;
     uint istackbase = 0;
 
@@ -871,6 +874,15 @@ void ParseBlock( TidyDocImpl* doc, Node *element, uint mode)
             return;
         }
 
+        if ( nodeIsBODY( node ) && DescendantOf( element, TidyTag_HEAD ))
+        {
+            /*  If we're in the HEAD, close it before proceeding.
+                This is an extremely rare occurance, but has been observed.
+            */
+            UngetToken( doc );
+            break;
+        }
+
         if ( nodeIsHTML(node) || nodeIsHEAD(node) || nodeIsBODY(node) )
         {
             if ( node->type == StartTag || node->type == StartEndTag )
@@ -892,17 +904,31 @@ void ParseBlock( TidyDocImpl* doc, Node *element, uint mode)
                 node->type = StartTag;
             else if ( nodeIsP(node) )
             {
+                /* Cannot have a block inside a paragraph, so no checking
+                   for an ancestor is necessary -- but we _can_ have
+                   paragraphs inside a block, so change it to an implicit
+                   empty paragraph, to be dealt with according to the user's
+                   options
+                */
+                node->type = StartEndTag;
+                node->implicit = yes;
+#if OBSOLETE
                 CoerceNode(doc, node, TidyTag_BR, no, no);
                 FreeAttrs( doc, node ); /* discard align attribute etc. */
                 InsertNodeAtEnd( element, node );
                 node = InferredTag(doc, TidyTag_BR);
+#endif
             }
-            else
+            else if (DescendantOf( element, node->tag->id ))
             {
                 /* 
                   if this is the end tag for an ancestor element
                   then infer end tag for this element
                 */
+                UngetToken( doc );
+                break;
+#if OBSOLETE
+                Node *parent;
                 for ( parent = element->parent;
                       parent != NULL; 
                       parent = parent->parent )
@@ -926,7 +952,10 @@ void ParseBlock( TidyDocImpl* doc, Node *element, uint mode)
                         return;
                     }
                 }
-
+#endif
+            }
+            else
+            {
                 /* special case </tr> etc. for stuff moved in front of table */
                 if ( lexer->exiled
                      && node->tag->model
@@ -1468,6 +1497,7 @@ void ParseInline( TidyDocImpl* doc, Node *element, uint mode )
                     TrimSpaces( doc, element );
                     InsertNodeAtEnd( element, node );
                     node = InferredTag(doc, TidyTag_BR);
+                    InsertNodeAtEnd( element, node ); /* todo: check this */
                     continue;
                 }
            }
@@ -2027,17 +2057,7 @@ static void MoveBeforeTable( TidyDocImpl* doc, Node *row, Node *node )
     {
         if ( nodeIsTABLE(table) )
         {
-            if (table->parent->content == table)
-                table->parent->content = node;
-
-            node->prev = table->prev;
-            node->next = table;
-            table->prev = node;
-            node->parent = table->parent;
-        
-            if (node->prev)
-                node->prev->next = node;
-
+            InsertNodeBeforeElement( table, node );
             break;
         }
     }
@@ -2974,7 +2994,8 @@ void ParseScript(TidyDocImpl* doc, Node *script, uint mode)
 
     node = GetToken(doc, IgnoreWhitespace);
 
-    if (!(node && node->type == EndTag && node->tag->id == script->tag->id))
+    if (!(node && node->type == EndTag && node->tag &&
+        node->tag->id == script->tag->id))
     {
         ReportError(doc, script, node, MISSING_ENDTAG_FOR);
 
@@ -3042,7 +3063,7 @@ void ParseHead(TidyDocImpl* doc, Node *head, uint mode)
             break;
         }
 
-        if (node->type == ProcInsTag &&
+        if (node->type == ProcInsTag && node->element &&
             tmbstrcmp(node->element, "xml-stylesheet") == 0)
         {
             ReportError(doc, head, node, TAG_NOT_ALLOWED_IN);
@@ -3070,7 +3091,7 @@ void ParseHead(TidyDocImpl* doc, Node *head, uint mode)
         
         /*
          if it doesn't belong in the head then
-         treat as implicit head of head and deal
+         treat as implicit end of head and deal
          with as part of the body
         */
         if (!(node->tag->model & CM_HEAD))
@@ -3382,10 +3403,14 @@ void ParseBody(TidyDocImpl* doc, Node *body, uint mode)
                 node->type = StartTag;
             else if ( nodeIsP(node) )
             {
+                node->type = StartEndTag;
+                node->implicit = yes;
+#if OBSOLETE
                 CoerceNode(doc, node, TidyTag_BR, no, no);
                 FreeAttrs( doc, node ); /* discard align attribute etc. */
                 InsertNodeAtEnd(body, node);
                 node = InferredTag(doc, TidyTag_BR);
+#endif
             }
             else if ( nodeHasCM(node, CM_INLINE) )
                 PopInline( doc, node );
@@ -3436,14 +3461,12 @@ void ParseNoFrames(TidyDocImpl* doc, Node *noframes, uint mode)
 {
     Lexer* lexer = doc->lexer;
     Node *node;
-    Bool checkstack;
 
     if ( cfg(doc, TidyAccessibilityCheckLevel) == 0 )
     {
         doc->badAccess |=  USING_NOFRAMES;
     }
     mode = IgnoreWhitespace;
-    checkstack = yes;
 
     while ( (node = GetToken(doc, mode)) != NULL )
     {
@@ -3511,7 +3534,10 @@ void ParseNoFrames(TidyDocImpl* doc, Node *noframes, uint mode)
                     node = InferredTag(doc, TidyTag_P);
                     ReportError(doc, noframes, node, CONTENT_AFTER_BODY );
                 }
-                InsertNodeAtEnd( body, node );
+                if ( body )
+                {
+                    InsertNodeAtEnd( body, node );
+                }
             }
             else
             {
@@ -3788,6 +3814,7 @@ void ParseHTML(TidyDocImpl* doc, Node *html, uint mode)
             if ( frameset != NULL && nodeIsFRAME(node) )
             {
                 ReportError(doc, html, node, DISCARDING_UNEXPECTED);
+                FreeNode(doc, node);
                 continue;
             }
         }
@@ -3990,7 +4017,7 @@ void ParseDocument(TidyDocImpl* doc)
             }
             else
             {
-                ReportError(doc, RootNode, node, DISCARDING_UNEXPECTED);
+                ReportError(doc, &doc->root, node, DISCARDING_UNEXPECTED);
                 FreeNode( doc, node);
             }
             continue;
@@ -3998,9 +4025,31 @@ void ParseDocument(TidyDocImpl* doc)
 
         if (node->type == EndTag)
         {
-            ReportError(doc, RootNode, node, DISCARDING_UNEXPECTED);
+            ReportError(doc, &doc->root, node, DISCARDING_UNEXPECTED);
             FreeNode( doc, node);
             continue;
+        }
+
+        if (node->type == StartTag && nodeIsHTML(node))
+        {
+            AttVal *xmlns;
+
+            xmlns = AttrGetById(node, TidyAttr_XMLNS);
+
+            if (AttrValueIs(xmlns, XHTML_NAMESPACE))
+            {
+                Bool htmlOut = cfgBool( doc, TidyHtmlOut );
+                doc->lexer->isvoyager = yes;                  /* Unless plain HTML */
+                SetOptionBool( doc, TidyXhtmlOut, !htmlOut ); /* is specified, output*/
+                SetOptionBool( doc, TidyXmlOut, !htmlOut );   /* will be XHTML. */
+
+                /* adjust other config options, just as in config.c */
+                if ( !htmlOut )
+                {
+                    SetOptionBool( doc, TidyUpperCaseTags, no );
+                    SetOptionBool( doc, TidyUpperCaseAttrs, no );
+                }
+            }
         }
 
         if ( node->type != StartTag || !nodeIsHTML(node) )
@@ -4015,7 +4064,7 @@ void ParseDocument(TidyDocImpl* doc)
             ReportError(doc, NULL, NULL, MISSING_DOCTYPE);
 
         InsertNodeAtEnd( &doc->root, html);
-        ParseHTML( doc, html, no );
+        ParseHTML( doc, html, IgnoreWhitespace );
         break;
     }
 
@@ -4024,7 +4073,7 @@ void ParseDocument(TidyDocImpl* doc)
         /* a later check should complain if <body> is empty */
         html = InferredTag(doc, TidyTag_HTML);
         InsertNodeAtEnd( &doc->root, html);
-        ParseHTML(doc, html, no);
+        ParseHTML(doc, html, IgnoreWhitespace);
     }
 
     if (!FindTITLE(doc))
@@ -4052,9 +4101,9 @@ Bool XMLPreserveWhiteSpace( TidyDocImpl* doc, Node *element)
     /* search attributes for xml:space */
     for (attribute = element->attributes; attribute; attribute = attribute->next)
     {
-        if ( tmbstrcmp(attribute->attribute, "xml:space") == 0 )
+        if (AttrValueIs(attribute, "xml:space"))
         {
-            if ( tmbstrcmp(attribute->value, "preserve") == 0 )
+            if (AttrValueIs(attribute, "preserve"))
                 return yes;
 
             return no;
@@ -4093,7 +4142,9 @@ static void ParseXMLElement(TidyDocImpl* doc, Node *element, uint mode)
 
     while ((node = GetToken(doc, mode)) != NULL)
     {
-        if (node->type == EndTag && tmbstrcmp(node->element, element->element) == 0)
+        if (node->type == EndTag &&
+           node->element && element->element &&
+           tmbstrcmp(node->element, element->element) == 0)
         {
             FreeNode( doc, node);
             element->closed = yes;
@@ -4185,7 +4236,7 @@ void ParseXMLDocument(TidyDocImpl* doc)
             }
             else
             {
-                ReportError(doc, RootNode, node, DISCARDING_UNEXPECTED);
+                ReportError(doc, &doc->root, node, DISCARDING_UNEXPECTED);
                 FreeNode( doc, node);
             }
             continue;
@@ -4202,11 +4253,14 @@ void ParseXMLDocument(TidyDocImpl* doc)
         {
             InsertNodeAtEnd( &doc->root, node );
             ParseXMLElement( doc, node, IgnoreWhitespace );
+            continue;
         }
 
+        ReportError(doc, &doc->root, node, DISCARDING_UNEXPECTED);
+        FreeNode( doc, node);
     }
 
-    /* ensure presence of initial <?XML version="1.0"?> */
+    /* ensure presence of initial <?xml version="1.0"?> */
     if ( cfgBool(doc, TidyXmlDecl) )
         FixXmlDecl( doc );
 }

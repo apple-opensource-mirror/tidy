@@ -3,14 +3,14 @@
 
 /* tmbstr.h - Tidy string utility functions
 
-  (c) 1998-2003 (W3C) MIT, ERCIM, Keio University
+  (c) 1998-2004 (W3C) MIT, ERCIM, Keio University
   See tidy.h for the copyright notice.
 
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:54 $ 
+    $Revision: 1.1.1.3 $ 
 
 */
 
@@ -74,8 +74,16 @@ tmbstr tmbstrtoupper(tmbstr s);
 
 Bool tmbsamefile( ctmbstr filename1, ctmbstr filename2 );
 
-int tmbvsnprintf(tmbstr buffer, size_t count, ctmbstr format, va_list args);
-int tmbsnprintf(tmbstr buffer, size_t count, ctmbstr format, ...);
+int tmbvsnprintf(tmbstr buffer, size_t count, ctmbstr format, va_list args)
+#ifdef __GNUC__
+__attribute__((format(printf, 3, 0)))
+#endif
+;
+int tmbsnprintf(tmbstr buffer, size_t count, ctmbstr format, ...)
+#ifdef __GNUC__
+__attribute__((format(printf, 3, 4)))
+#endif
+;
 
 #ifdef __cplusplus
 }  /* extern "C" */

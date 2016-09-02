@@ -6,9 +6,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2004/08/16 23:45:24 $ 
+    $Revision: 1.1.1.2 $ 
 
 */
 
@@ -115,7 +115,7 @@ static struct _unicode4cat
 {
   unsigned long code;
   char category;
-} unicode4cat[] =
+} const unicode4cat[] =
 {
 #if 0
   { 0x037E, UCPO }, { 0x0387, UCPO }, { 0x055A, UCPO }, { 0x055B, UCPO },
@@ -226,7 +226,7 @@ typedef enum
   (U+0009, U+000A, U+000D, U+000C, U+0020) other characters could
   be used to determine a wrap point. Since user agents would
   normalize the inserted newline character to a space character,
-  this wrapping behaivour would insert visual whitespace into the
+  this wrapping behaviour would insert visual whitespace into the
   document.
 
   Characters of the General Category Pi and Ps in the Unicode
@@ -867,7 +867,7 @@ static void PPrintChar( TidyDocImpl* doc, uint c, uint mode )
 
         if (c > 126 && c < 160)
         {
-            tmbsnprintf(entity, sizeof(entity), "&#%d;", c);
+            tmbsnprintf(entity, sizeof(entity), "&#%u;", c);
             AddString( pprint, entity );
             return;
         }
@@ -992,7 +992,7 @@ static void PPrintString( TidyDocImpl* doc, uint indent, ctmbstr str )
 
 
 static void PPrintAttrValue( TidyDocImpl* doc, uint indent,
-                             tmbstr value, uint delim, Bool wrappable, Bool scriptAttr )
+                             ctmbstr value, uint delim, Bool wrappable, Bool scriptAttr )
 {
     TidyPrintImpl* pprint = &doc->pprint;
     Bool scriptlets = cfg(doc, TidyWrapScriptlets);
@@ -1296,17 +1296,20 @@ static void PPrintTag( TidyDocImpl* doc,
     if ( node->type == EndTag )
         AddChar( pprint, '/' );
 
-    while (*s)
+    if (s)
     {
-        c = (unsigned char)*s;
+        while (*s)
+        {
+            c = (unsigned char)*s;
 
-        if (c > 0x7F)
-            s += GetUTF8(s, &c);
-        else if (uc)
-            c = ToUpper(c);
+            if (c > 0x7F)
+                s += GetUTF8(s, &c);
+            else if (uc)
+                c = ToUpper(c);
 
-        AddChar(pprint, c);
-        ++s;
+            AddChar(pprint, c);
+            ++s;
+        }
     }
 
     PPrintAttrs( doc, indent, node );
@@ -1362,17 +1365,20 @@ static void PPrintEndTag( TidyDocImpl* doc, uint mode, uint indent, Node *node )
 
     AddString( pprint, "</" );
 
-    while (*s)
+    if (s)
     {
-        c = (unsigned char)*s;
+        while (*s)
+        {
+             c = (unsigned char)*s;
 
-        if (c > 0x7F)
-            s += GetUTF8(s, &c);
-        else if (uc)
-            c = ToUpper(c);
+             if (c > 0x7F)
+                 s += GetUTF8(s, &c);
+             else if (uc)
+                 c = ToUpper(c);
 
-        AddChar(pprint, c);
-        ++s;
+             AddChar(pprint, c);
+             ++s;
+        }
     }
 
     AddChar( pprint, '>' );
@@ -1417,7 +1423,10 @@ static void PPrintDocType( TidyDocImpl* doc, uint indent, Node *node )
 
     AddString( pprint, "<!DOCTYPE " );
     SetWrap( doc, indent );
-    AddString(pprint, node->element);
+    if (node->element)
+    {
+        AddString(pprint, node->element);
+    }
 
     if (fpi && fpi->value)
     {
@@ -1739,28 +1748,27 @@ void PPrintScriptStyle( TidyDocImpl* doc, uint mode, uint indent, Node *node )
 
     if ( xhtmlOut && node->content != NULL )
     {
-        AttVal* type = attrGetTYPE( node );
-        if ( type != NULL && type->value != NULL )
+        AttVal* type = attrGetTYPE(node);
+
+        if (AttrValueIs(type, "text/javascript"))
         {
-            if ( tmbstrcasecmp(type->value, "text/javascript") == 0 )
-            {
-                commentStart = JS_COMMENT_START;
-                commentEnd = JS_COMMENT_END;
-            }
-            else if ( tmbstrcasecmp(type->value, "text/css") == 0 )
-            {
-                commentStart = CSS_COMMENT_START;
-                commentEnd = CSS_COMMENT_END;
-            }
-            else if ( tmbstrcasecmp(type->value, "text/vbscript") == 0 )
-            {
-                commentStart = VB_COMMENT_START;
-                commentEnd = VB_COMMENT_END;
-            }
+            commentStart = JS_COMMENT_START;
+            commentEnd = JS_COMMENT_END;
+        }
+        else if (AttrValueIs(type, "text/css"))
+        {
+            commentStart = CSS_COMMENT_START;
+            commentEnd = CSS_COMMENT_END;
+        }
+        else if (AttrValueIs(type, "text/vbscript"))
+        {
+            commentStart = VB_COMMENT_START;
+            commentEnd = VB_COMMENT_END;
         }
 
-        hasCData = HasCDATA( doc->lexer, node->content );
-        if ( ! hasCData )
+        hasCData = HasCDATA(doc->lexer, node->content);
+
+        if (!hasCData)
         {
             uint saveWrap = WrapOff( doc );
 
@@ -2038,7 +2046,7 @@ void PPrintTree( TidyDocImpl* doc, uint mode, uint indent, Node *node )
             uint contentIndent = indent;
 
             /* insert extra newline for classic formatting */
-            if (classic && node->parent && node->parent->content != node)
+            if (classic && node->parent && node->parent->content != node && !nodeIsHTML(node))
             {
                 PFlushLine( doc, indent );
             }
@@ -2112,6 +2120,8 @@ void PPrintTree( TidyDocImpl* doc, uint mode, uint indent, Node *node )
             }
 
             if (!indcont && !hideend && !nodeIsHTML(node) && !classic)
+                PFlushLine( doc, indent );
+            else if (classic && node->next != NULL && nodeHasCM(node, CM_LIST|CM_DEFLIST|CM_TABLE|CM_BLOCK/*|CM_HEADING*/))
                 PFlushLine( doc, indent );
         }
     }

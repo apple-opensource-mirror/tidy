@@ -5,9 +5,9 @@
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2004/08/16 23:45:24 $ 
+    $Revision: 1.1.1.2 $ 
 
 */
 
@@ -49,7 +49,7 @@
 /* Forward references
 */
 /* swallows closing '>' */
-AttVal *ParseAttrs( TidyDocImpl* doc, Bool *isempty );
+static AttVal *ParseAttrs( TidyDocImpl* doc, Bool *isempty );
 
 static tmbstr ParseAttribute( TidyDocImpl* doc, Bool* isempty, 
                              Node **asp, Node **php );
@@ -63,12 +63,12 @@ static void AddAttrToList( AttVal** list, AttVal* av );
 
 /* used to classify characters for lexical purposes */
 #define MAP(c) ((unsigned)c < 128 ? lexmap[(unsigned)c] : 0)
-uint lexmap[128];
+static uint lexmap[128];
 
 #define IsValidXMLAttrName(name) IsValidXMLID(name)
 #define IsValidXMLElemName(name) IsValidXMLID(name)
 
-struct _doctypes
+static struct _doctypes
 {
     uint score;
     uint vers;
@@ -690,11 +690,11 @@ void FreeLexer( TidyDocImpl* doc )
 */
 void AddByte( Lexer *lexer, tmbchar ch )
 {
-    if ( lexer->lexsize + 1 >= lexer->lexlength )
+    if ( lexer->lexsize + 2 >= lexer->lexlength )
     {
         tmbstr buf = NULL;
         uint allocAmt = lexer->lexlength;
-        while ( lexer->lexsize + 1 >= allocAmt )
+        while ( lexer->lexsize + 2 >= allocAmt )
         {
             if ( allocAmt == 0 )
                 allocAmt = 8192;
@@ -866,7 +866,8 @@ static void ParseEntity( TidyDocImpl* doc, int mode )
             {
                 /* invalid numeric character reference */
                 
-                int c1 = 0, replaceMode = DISCARDED_CHAR;
+                uint c1 = 0;
+                int replaceMode = DISCARDED_CHAR;
             
                 if ( ReplacementCharEncoding == WIN1252 )
                     c1 = DecodeWin1252( ch );
@@ -1347,13 +1348,12 @@ Bool AddGenerator( TidyDocImpl* doc )
             {
                 attval = AttrGetById(node, TidyAttr_NAME);
 
-                if ( attval && attval->value &&
-                     tmbstrcasecmp(attval->value, "generator") == 0 )
+                if (AttrValueIs(attval, "generator"))
                 {
                     attval = AttrGetById(node, TidyAttr_CONTENT);
 
-                    if ( attval && attval->value &&
-                         tmbstrncasecmp(attval->value, "HTML Tidy", 9) == 0 )
+                    if (AttrHasValue(attval) &&
+                        tmbstrncasecmp(attval->value, "HTML Tidy", 9) == 0)
                     {
                         /* update the existing content to reflect the */
                         /* actual version of Tidy currently being used */
@@ -1410,8 +1410,11 @@ ctmbstr HTMLVersionNameFromCode( uint vers, Bool isXhtml )
 
     ctmbstr name = GetNameFromVers(vers);
 
+    /* this test has moved to ReportMarkupVersion() in localize.c, for localization reasons */
+    /*
     if (!name)
         name = "HTML Proprietary";
+     */
 
     return name;
 }
@@ -1456,7 +1459,7 @@ Bool SetXHTMLDocType( TidyDocImpl* doc )
 {
     Lexer *lexer = doc->lexer;
     Node *doctype = FindDocType( doc );
-    uint dtmode = cfg(doc, TidyDoctypeMode);
+    TidyDoctypeModes dtmode = cfg(doc, TidyDoctypeMode);
     ctmbstr pub = "PUBLIC";
     ctmbstr sys = "SYSTEM";
 
@@ -1611,7 +1614,7 @@ Bool FixDocType( TidyDocImpl* doc )
     return yes;
 }
 
-/* ensure XML document starts with <?XML version="1.0"?> */
+/* ensure XML document starts with <?xml version="1.0"?> */
 /* add encoding attribute if not using ASCII or UTF-8 output */
 Bool FixXmlDecl( TidyDocImpl* doc )
 {
@@ -1723,7 +1726,7 @@ Node *GetCDATA( TidyDocImpl* doc, Node *container )
     /* seen start tag, look for matching end tag */
     while ((c = ReadChar(doc->docIn)) != EndOfStream)
     {
-        AddCharToLexer(lexer, (uint)c);
+        AddCharToLexer(lexer, c);
         lexer->txtend = lexer->lexsize;
 
         if (state == CDATA_INTERMEDIATE)
@@ -1748,13 +1751,13 @@ Node *GetCDATA( TidyDocImpl* doc, Node *container )
                     UngetChar('<', doc->docIn);
                     return NULL;
                 }
-                AddCharToLexer(lexer, (uint)c);
+                AddCharToLexer(lexer, c);
                 start = lexer->lexsize - 1;
                 state = CDATA_STARTTAG;
             }
             else if (c == '/')
             {
-                AddCharToLexer(lexer, (uint)c);
+                AddCharToLexer(lexer, c);
 
                 c = ReadChar(doc->docIn);
                 
@@ -1771,7 +1774,7 @@ Node *GetCDATA( TidyDocImpl* doc, Node *container )
             else if (c == '\\')
             {
                 /* recognize document.write("<script><\/script>") */
-                AddCharToLexer(lexer, (uint)c);
+                AddCharToLexer(lexer, c);
 
                 c = ReadChar(doc->docIn);
 
@@ -1781,7 +1784,7 @@ Node *GetCDATA( TidyDocImpl* doc, Node *container )
                     continue;
                 }
 
-                AddCharToLexer(lexer, (uint)c);
+                AddCharToLexer(lexer, c);
                 c = ReadChar(doc->docIn);
                 
                 if (!IsLetter(c))
@@ -1908,7 +1911,7 @@ void UngetToken( TidyDocImpl* doc )
 Node* GetToken( TidyDocImpl* doc, uint mode )
 {
     Lexer* lexer = doc->lexer;
-    uint c, lastc, badcomment = 0;
+    uint c, badcomment = 0;
     Bool isempty = no;
     AttVal *attributes = NULL;
 
@@ -1952,7 +1955,7 @@ Node* GetToken( TidyDocImpl* doc, uint mode )
         if (c == 160 && (mode & Preformatted))
             c = ' ';
 
-        AddCharToLexer(lexer, (uint)c);
+        AddCharToLexer(lexer, c);
 
         switch (lexer->state)
         {
@@ -1994,7 +1997,6 @@ Node* GetToken( TidyDocImpl* doc, uint mode )
                     else /* prev character wasn't white */
                     {
                         lexer->waswhite = yes;
-                        lastc = c;
 
                         if (mode != Preformatted && mode != IgnoreMarkup && c != ' ')
                             ChangeChar(lexer, ' ');
@@ -2480,7 +2482,7 @@ Node* GetToken( TidyDocImpl* doc, uint mode )
                     uint i;
                     Bool closed;
 
-                    for (i = 0; i <= lexer->lexsize &&
+                    for (i = 0; i < lexer->lexsize - lexer->txtstart &&
                         !IsWhite(lexer->lexbuf[i + lexer->txtstart]); ++i)
                         /**/;
 
@@ -2982,7 +2984,8 @@ static tmbstr  ParseAttribute( TidyDocImpl* doc, Bool *isempty,
 static int ParseServerInstruction( TidyDocImpl* doc )
 {
     Lexer* lexer = doc->lexer;
-    int c, delim = '"';
+    uint c;
+    int delim = '"';
     Bool isrule = no;
 
     c = ReadChar(doc->docIn);
@@ -3326,10 +3329,15 @@ static tmbstr ParseValue( TidyDocImpl* doc, ctmbstr name,
 
     if (len > 0 || delim)
     {
-        /* ignore leading and trailing white space for all but title and */
-        /* alt attributes unless --literal-attributes is set to yes      */
+        /* ignore leading and trailing white space for all but title, alt, value */
+        /* and prompts attributes unless --literal-attributes is set to yes      */
+        /* #994841 - Whitespace is removed from value attributes                 */
 
-        if (munge && tmbstrcasecmp(name, "alt") && tmbstrcasecmp(name, "title"))
+        if (munge &&
+            tmbstrcasecmp(name, "alt") &&
+            tmbstrcasecmp(name, "title") &&
+            tmbstrcasecmp(name, "value") &&
+            tmbstrcasecmp(name, "prompt"))
         {
             while (IsWhite(lexer->lexbuf[start+len-1]))
                 --len;
@@ -3408,7 +3416,7 @@ static void AddAttrToList( AttVal** list, AttVal* av )
   }
 }
 
-AttVal* ParseAttrs( TidyDocImpl* doc, Bool *isempty )
+static AttVal* ParseAttrs( TidyDocImpl* doc, Bool *isempty )
 {
     Lexer* lexer = doc->lexer;
     AttVal *av, *list;
@@ -3519,7 +3527,7 @@ static Node *ParseDocTypeDecl(TidyDocImpl* doc)
         {
             if (!lexer->waswhite)
             {
-                AddCharToLexer(lexer, (uint)c);
+                AddCharToLexer(lexer, c);
                 lexer->waswhite = yes;
             }
             else
@@ -3530,7 +3538,7 @@ static Node *ParseDocTypeDecl(TidyDocImpl* doc)
         }
         else
         {
-            AddCharToLexer(lexer, (uint)c);
+            AddCharToLexer(lexer, c);
             lexer->waswhite = no;
         }
 

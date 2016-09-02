@@ -1,13 +1,13 @@
 /* istack.c -- inline stack for compatibility with Mosaic
 
-  (c) 1998-2003 (W3C) MIT, ERCIM, Keio University
+  (c) 1998-2004 (W3C) MIT, ERCIM, Keio University
   See tidy.h for the copyright notice.
   
   CVS Info :
 
-    $Author: rbraun $ 
-    $Date: 2004/05/04 20:05:14 $ 
-    $Revision: 1.1.1.1 $ 
+    $Author: swilkin $ 
+    $Date: 2005/01/06 02:01:53 $ 
+    $Revision: 1.1.1.3 $ 
 
 */
 
@@ -16,10 +16,6 @@
 #include "attrs.h"
 #include "streamio.h"
 #include "tmbstr.h"
-
-extern Bool   debug_flag;
-extern Node  *debug_element;
-extern Lexer *debug_lexer;
 
 /* duplicate attributes */
 AttVal *DupAttrs( TidyDocImpl* doc, AttVal *attrs)
@@ -35,6 +31,8 @@ AttVal *DupAttrs( TidyDocImpl* doc, AttVal *attrs)
     newattrs->attribute = tmbstrdup(attrs->attribute);
     newattrs->value = tmbstrdup(attrs->value);
     newattrs->dict = FindAttribute(doc, newattrs);
+    newattrs->asp = attrs->asp ? CloneNode(doc, attrs->asp) : NULL;
+    newattrs->php = attrs->php ? CloneNode(doc, attrs->php) : NULL;
     return newattrs;
 }
 
